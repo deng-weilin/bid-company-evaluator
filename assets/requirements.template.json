@@ -1,0 +1,68 @@
+{
+  "_说明": "招标文件要求清单。由 Agent 从 tender_raw.<tag>.txt 逐条拆解，每行 locater 用抽取文件的行号。",
+  "tender": {
+    "name": null,
+    "code": null,
+    "buyer": null,
+    "agent": null,
+    "raw_file": "tender_raw.<tag>.txt",
+    "budget": null,
+    "ceiling": null,
+    "service_period": null,
+    "method": null,
+    "pdf_checked": null
+  },
+  "score_model": {
+    "detail_total": null,
+    "price_total": null,
+    "pools": [
+      {
+        "_说明": "分值池：原文明确写了「每有一项X不满足扣N分（共M条）」才建池。原文没写就别建。",
+        "symbol": "▲",
+        "declared_count": 12,
+        "per_item": 1.5,
+        "declared_total": 18.0,
+        "source_line": 913,
+        "quote": "每有一项▲内容不满足扣1.5分（共12条）"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "line": "QUALIFICATION",
+      "_line_取值": "QUALIFICATION=资质线(能不能进门) / CONFORMITY=符合性线(会不会被判无效) / SCORING=标准线(能拿多少分)",
+      "category": "一般资格",
+      "title": "一句话说清这条要求什么",
+      "text": "原文照抄",
+      "severity_symbol": null,
+      "is_hard_gate": true,
+      "_is_hard_gate_说明": "不满足是否直接出局。★实质性要求、资格条件一律 true；▲●█扣分一律 false",
+      "per_item": null,
+      "_per_item_说明": "单条扣多少分。只有加入 score_model.pools 的符号才能填，否则 null",
+      "max_score": null,
+      "_max_score_说明": "加分项的上限，如「每有1个业绩得1分，最高5分」填 5.0",
+      "source_lines": [12],
+      "quote": "原文前30字以上，用于溯源校验",
+      "basis": "DOC",
+      "_basis_取值": "DOC=交材料 / COMMIT=出承诺函 / DEMO=现场演示 / PLATFORM=平台数据 / NA"
+    }
+  ],
+  "coverage_ledger": [
+    {
+      "symbol": "★",
+      "line": 122,
+      "req_id": "REQ-003",
+      "disposition": "COVERED",
+      "_disposition_取值": "COVERED=已拆成要求 / EXEMPT=不拆（必须写 reason）",
+      "reason": null
+    }
+  ],
+  "issues": [
+    {
+      "type": "CONFLICT",
+      "desc": "原文矛盾或无法判定的地方，交人工，不自行取舍",
+      "source_lines": []
+    }
+  ]
+}

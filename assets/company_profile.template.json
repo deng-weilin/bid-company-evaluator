@@ -1,0 +1,95 @@
+{
+  "_说明": "受评公司的客观事实库。只填能拿出原件的东西；拿不出就填 null 或留空，绝不凭印象写。每一个字段都要能在 evidence_index 里找到对应材料。",
+  "company": {
+    "legal_name": null,
+    "unified_social_credit_code": null,
+    "established_date": null,
+    "registered_capital_wan": null,
+    "employee_count": null,
+    "industry": null,
+    "sme_status": null,
+    "_sme_status_取值": "大型 / 中型 / 小型 / 微型 / 监狱企业 / 残疾人福利性单位 / 个体工商户 / null",
+    "last_year_revenue_wan": null,
+    "social_security_months": null,
+    "tax_record_ok": null
+  },
+  "credit": {
+    "checked_at": null,
+    "_checked_at_说明": "查信用中国/中国政府采购网/执行信息公开网的日期",
+    "in_dishonest_debtor_list": null,
+    "in_major_tax_violation_list": null,
+    "in_gov_procurement_blacklist": null,
+    "in_serious_violation_list": null,
+    "screenshots": []
+  },
+  "qualifications": [
+    {
+      "_说明": "资质证书、许可证、软著、专利、体系认证等，一条一个对象",
+      "name": null,
+      "type": null,
+      "cert_no": null,
+      "issue_date": null,
+      "valid_until": null,
+      "owner": null,
+      "source_file": null
+    }
+  ],
+  "performance": [
+    {
+      "_说明": "类似业绩，以合同签订时间为准",
+      "project_name": null,
+      "buyer": null,
+      "contract_date": null,
+      "amount": null,
+      "content_summary": null,
+      "source_file": null
+    }
+  ],
+  "personnel": [
+    {
+      "name": null,
+      "role": null,
+      "certificate": null,
+      "employment_months": null,
+      "source_file": null
+    }
+  ],
+  "platform_capability": {
+    "_说明": "招标文件若要求平台能力（课程数、备案、等保、资源库规模），填这里；没要求就整块留空",
+    "platform_name": null,
+    "icp_record_no": null,
+    "security_level_protection": null,
+    "national_courses_count": null,
+    "resource_library_count": null,
+    "model_library_count": null
+  },
+  "declarations": {
+    "_说明": "公司愿意出具的承诺函/声明函清单。key = 要求编号，value = true(愿意) / false(不愿意) / null(未定)",
+    "REQ-000": null
+  },
+  "qcc_entity": {
+    "_说明": "企查查锚定结果。未锚定不许往下查。",
+    "legal_name": null,
+    "credit_code": null,
+    "match_type": null,
+    "_match_type_取值": "唯一精确匹配 / 多候选待用户选定 / 未匹配",
+    "fetched_at": null
+  },
+  "evidence_index": [
+    {
+      "_说明": "所有材料的总索引。编号 EV-001 递增，逐条判定只许引用这里的编号。",
+      "id": "EV-001",
+      "name": null,
+      "source": null,
+      "_source_取值": "QCC=企查查 / WEB=官网查询截图 / USER=公司提供原件",
+      "tool": null,
+      "_tool_说明": "source=QCC 时必填，写企查查工具名，如 get_company_registration_info",
+      "fetched_at": null,
+      "_fetched_at_说明": "source=QCC 时必填，YYYY-MM-DD。信用类数据超 7 天需重查",
+      "key_facts": null,
+      "_key_facts_说明": "这条证据实际证明了什么，一句话写清，便于逐条判定时引用",
+      "file": null,
+      "note": null
+    }
+  ]
+}

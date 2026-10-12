@@ -1,0 +1,22 @@
+{
+  "_说明": "逐条判定。一条要求一条判定，status 只有四个值。语义判断由 Agent 完成，脚本只做计算。",
+  "company": "受评公司全称",
+  "assessed_at": null,
+  "items": [
+    {
+      "req_id": "REQ-001",
+      "status": "PASS",
+      "_status_取值": "PASS=符合 / FAIL=不符合 / UNKNOWN=资料不足 / NA=不适用",
+      "evidence": ["EV-001"],
+      "_evidence_说明": "只许引用 company_profile.json 中 evidence_index 里真实存在的编号。拿不出证据就是 UNKNOWN，不是 PASS",
+      "missing": null,
+      "_missing_说明": "status=UNKNOWN 时必填：到底缺哪一份材料，写具体",
+      "fail_items": 0,
+      "_fail_items_说明": "一条要求含多个最小单位时，不满足的单位数。单条要求填 0 或 1",
+      "unknown_items": 0,
+      "awarded": null,
+      "_awarded_说明": "加分项实际得分。加分项才填；扣分要求不用填",
+      "note": "一句话说明为什么这么判"
+    }
+  ]
+}
