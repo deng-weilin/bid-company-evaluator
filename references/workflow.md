@@ -116,6 +116,7 @@ python scripts/evaluate.py --requirements work/requirements.json \
                            --assessments work/assessments.json \
                            --profile work/company_profile.json --out ./work
 python scripts/validate.py --work ./work --profile work/company_profile.json
+python scripts/pentest.py  --work ./work --profile work/company_profile.json
 ```
 
 产出 `work/evaluation.json` 与 `work/评估报告.md`（表格由脚本生成，不含自由发挥的分数）。
@@ -138,9 +139,18 @@ python scripts/validate.py --work ./work --profile work/company_profile.json
 | R10 | 原文引句必须与抽取文本对得上 |
 | R11 | 证据来源标注完整：`source` 三选一；`QCC` 必须带 `tool` 与 `fetched_at` |
 | R12 | 判"符合"必须挂证据编号，不许空口 PASS |
-| R13 | 总分闭合：扣分池合计 + 加分项满分 == 详细评审总分 |
+| R13 | 总分闭合：扣分池合计 + 加分项满分 == 详细评审总分（pools 为空也要平账） |
+| R14 | 判定值与计数/得分自洽：不符合必须扣分且不得分；符合的项目必须填得分；结论已确定的不许再挂 unknown_items |
+| R15 | 单条得分不得超过该项满分、也不得为负 |
+| R16 | ★ 必须标 `is_hard_gate=true`（漏标会让"出局"静默降级成"待定/通过"）；硬门槛落在标准线时 WARN |
+| R17 | 三线条款总数平账（读 `line_totals`），防整条线漏拆 |
 
-改完脚本跑一次 `python scripts/self_test.py`（1 金样例 + 5 变异），必须全绿。
+改完脚本两套自检都要跑，都必须全绿：
+
+- `python scripts/self_test.py` —— **1 金样例 + 5 变异**，测"正常数据算得对不对"。
+- `python scripts/pentest.py --work ./work` —— **10 个坏数据用例**，测"有人把关掉校验能不能悄悄过关"。
+
+两者不是一回事。`self_test` 全绿不代表没有洞：历史上被打穿的 R14/R15/R16/R17 四个方向，`self_test` 一条都测不出来，因为它们是"数据与判定自相矛盾"类的问题，不是"算式写错"类的问题。
 
 ## S5 交付
 
@@ -165,3 +175,7 @@ python scripts/validate.py --work ./work --profile work/company_profile.json
 8. **加分项被当成无符号扣分项。** 声明"共 25 条"却登记出 29 条，多出来的就是带 `max_score` 的加分项。R5 会 WARN，别当噪音。
 9. **把扣分池当成"零起扣分"。** 池的 `declared_total` 是**全满足就能拿到的基准分**，不满足才扣。漏掉基准分会整份卷子少算一大截（真实项目上少算 48 分）。
 10. **总分凑不平就往下走。** 48 + 42 ≠ 90 说明还有分没拆成要求，R13 会拦——别手动改总分去凑。
+11. **判"不符合"却在数字上放水。** 写 `status=FAIL` 的同时把 `fail_items` 留成 0，或者给 `awarded` 填上满分——两条都让"不符合"变成不扣分/照得分，而且**不报错不告警**。R14/R15 就是为这个加的。
+12. **★ 条款没标 `is_hard_gate`。** 结论会从"出局"静默降级成"待定"，所有校验全绿。拆条时把 ★ 当成"必须 true"的硬约束（R16）。
+13. **符合性线拆漏了没感觉。** 这线不计分、部分不带符号，删掉三条连同判定一起删，得分区间和结论**纹丝不动**。唯一防线是 `line_totals` + R17，所以这个字段别偷懒跳过去。
+14. **以为 self_test 全绿就等于没洞。** 它只测算得对不对，不测能不能被绕过。改脚本要同时跑 `pentest.py`。

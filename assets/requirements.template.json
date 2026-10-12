@@ -1,5 +1,11 @@
 {
   "_说明": "招标文件要求清单。由 Agent 从 tender_raw.<tag>.txt 逐条拆解，每行 locater 用抽取文件的行号。",
+  "line_totals": {
+    "_说明": "【建议必填】拆条时人工从原文数出的三条线各自条款总数。符号台账(R9)与分值闭合(R13)都管不到「不带符号且不划入分值池」的要求，符合性线整条漏拆时只有 R17(R17 依赖本字段)能发现。数不出来就留 null，validate 会 WARN。",
+    "QUALIFICATION": null,
+    "CONFORMITY": null,
+    "SCORING": null
+  },
   "tender": {
     "name": null,
     "code": null,

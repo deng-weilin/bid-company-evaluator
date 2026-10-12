@@ -47,9 +47,12 @@ python scripts/evaluate.py --requirements work/requirements.json \\
                            --assessments work/assessments.json \\
                            --profile work/company_profile.json --out ./work
 python scripts/validate.py --work ./work --profile work/company_profile.json
+python scripts/pentest.py  --work ./work --profile work/company_profile.json
 ```
 
+`pentest.py` 需要 work/ 里已有三份 json，所以放在最后跑。
 `validate.py` 报 ERROR 一律不许交付。WARN 要逐条说明为什么可以不改。
+全套 16 条校验（R1-R17）之外，`pentest.py` 再用 10 份坏数据验证这些校验本身能不能被绕过去。
 """
 
 

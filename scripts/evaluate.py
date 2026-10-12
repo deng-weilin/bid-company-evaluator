@@ -58,6 +58,7 @@ def evaluate(reqs_doc, assess_doc):
                     for p in model.get("pools", []))
 
     rows, missing_assess, bad_status = [], [], []
+    soft_issues = []
     hard_fail, hard_unknown = [], []
     gained, gained_worst, lost, lost_worst = 0.0, 0.0, 0.0, 0.0
 
@@ -78,21 +79,56 @@ def evaluate(reqs_doc, assess_doc):
         hard = bool(r.get("is_hard_gate"))
         per_item = as_num(r.get("per_item"))
         max_score = as_num(r.get("max_score"))
-        fail_items = as_int(a.get("fail_items"), 1 if st == "FAIL" else 0)
-        unknown_items = as_int(a.get("unknown_items"), 1 if st == "UNKNOWN" else 0)
+        # —— 判定值与计数的一致性由本脚本强制，不信任 assessments 里填的数字 ——
+        # 红队实测（见 scripts/pentest.py P1/P2/P4/P7）：
+        #   status=FAIL + fail_items=0  → 判不符合却一分不扣
+        #   status=FAIL + awarded=满分  → 判不符合却拿满分
+        #   status=PASS + awarded=999   → 超过该项满分照给
+        #   status=PASS + awarded=null  → 判符合却记 0 分
+        # 这四条都不报错不告警，只会让分数悄悄偏移。所以在这里按 status 反推。
+        if st == "FAIL":
+            n_fail = max(1, as_int(a.get("fail_items"), 1))
+            # 结论已确定，不再计入「资料不足」项：否则最差口径会被虚增扣分
+            n_unk = 0
+        elif st == "UNKNOWN":
+            n_fail = 0
+            n_unk = as_int(a.get("unknown_items"), 1)
+        else:   # PASS / NA
+            n_fail = 0
+            n_unk = 0
+        fail_items, unknown_items = n_fail, n_unk
 
+        # 判定值与外部填写值不一致的留痕（不静默改别人数据，但报告里要点名）
+        if st in ("FAIL", "UNKNOWN", "PASS", "NA"):
+            ext_fail = a.get("fail_items")
+            if line == "SCORING" and per_item is not None and ext_fail is not None \
+               and as_int(ext_fail, 0) != n_fail:
+                soft_issues.append("%s: 判定=%s 但 fail_items 填了 %s（按判定值取 %d）"
+                                   % (rid, st, ext_fail, n_fail))
+
+        raw_awarded = as_num(a.get("awarded"))
         deduct, deduct_worst, award, award_worst = None, None, None, None
-        if line == "SCORING":
+        if line == "SCORING" and st != "NA":
             if per_item is not None:
                 deduct = per_item * fail_items
                 deduct_worst = per_item * (fail_items + unknown_items)
                 lost += deduct
                 lost_worst += deduct_worst
             if max_score is not None:
-                got = as_num(a.get("awarded"))
-                award = got if (st != "UNKNOWN" and got is not None) else (
-                    0.0 if st == "UNKNOWN" else 0.0)
-                award_worst = got if got is not None else (max_score if st == "UNKNOWN" else 0.0)
+                # 不符合 = 不得分（填了也作废）
+                if st == "FAIL":
+                    award = 0.0
+                    award_worst = 0.0
+                    if raw_awarded:
+                        soft_issues.append("%s: 判定=不符合 却填了得分 %s，已按 0 计" % (rid, raw_awarded))
+                else:
+                    got = raw_awarded if raw_awarded is not None else 0.0
+                    if got < -0.011 or got > max_score + 0.011:
+                        soft_issues.append("%s: 得分 %s 超出该项满分 %s，已按边界截断"
+                                           % (rid, got, max_score))
+                    got = max(0.0, min(max_score, got))
+                    award = 0.0 if st == "UNKNOWN" else got
+                    award_worst = got if st == "PASS" else max_score
                 gained += award
                 gained_worst += award_worst
 
@@ -164,7 +200,8 @@ def evaluate(reqs_doc, assess_doc):
         "tally": {ln: tally(ln) for ln in LINE_ORDER},
         "rows": rows,
         "integrity": {"missing_assessment": missing_assess,
-                      "invalid_status": bad_status},
+                      "invalid_status": bad_status,
+                      "soft_issues": soft_issues},
     }
 
 
@@ -250,6 +287,16 @@ def render(res):
                                 ",".join(r["evidence"]) or "-", r["missing"] or "-",
                                 ",".join(str(x) for x in r["source_lines"]) or "-"]
                                for r in sub]))
+    soft = res["integrity"].get("soft_issues") or []
+    if soft:
+        L.append("## 四、算分口径被自动纠正的地方")
+        L.append("")
+        L.append("以下条目的「判定结果」与「手填的分值/项数」不一致，"
+                 "脚本已**按判定结果为准**计算，原填写值作废。交表前请回头核对判定是否写错。")
+        L.append("")
+        L.append(md_table(["条目", "说明"], [["-", s] for s in soft]))
+        L.append("")
+
     L.append("")
     L.append("## 五、本报告不做什么")
     L.append("")
@@ -293,6 +340,11 @@ def main():
         print("!! 未判定的要求: %s" % ", ".join(res["integrity"]["missing_assessment"]))
     if res["integrity"]["invalid_status"]:
         print("!! 非法状态值: %s" % ", ".join(res["integrity"]["invalid_status"]))
+    if res["integrity"]["soft_issues"]:
+        print("!! 判定值与填分不一致 %d 处（已在报告第五节列出）:"
+              % len(res["integrity"]["soft_issues"]))
+        for s in res["integrity"]["soft_issues"][:10]:
+            print("   - %s" % s)
     print("产出: %s / %s" % (jp, mp))
     return 0
 

@@ -5,7 +5,7 @@ display_name_en: Bid Company Eligibility Evaluator
 description: 拿一份招标/磋商/询价文件，对一家投标公司做资质评估、符合性评估与标准评估，先经企查查取证再做逐条判定，判断是否符合招标文件各项要求，给出出局/待定/通过结论与得分区间；不编写投标文件、不生成报价、不代提交。用户提到评估投标公司、判断能不能投、资格符合性审查、资质打分测算、投标公司摸底或第三方公司投标能力评估时使用。
 description_zh: 通用评审器——招标文件加企查查取证，输出三条评估线逐条判定、结论与得分区间，全程可溯源、零资料幻觉、不参与投标。
 description_en: Evaluate any bidding company against any tender document using QCC company data - qualification, conformity and standard compliance, with pass/fail/unknown verdicts and a score range. Never writes bid documents.
-version: 0.3.0
+version: 0.4.0
 author: 邓伟林
 user-invocable: true
 agent_created: true
@@ -32,6 +32,8 @@ agent_created: true
    - **加分项**：按数量给分的（软著几个、业绩几个、实施方案主观分）→ 用 `max_score`，**不带 `severity_symbol` 也不进任何扣分池**。
    
    两类混在一起，条数永远对不上、总分永远算不平。R5 只在扣分项里数条数，R13 校验"扣分池合计 + 加分项满分 == 详细评审总分"。
+8. **判定值说了算，手填的分值不作数。** `status` 与 `fail_items` / `unknown_items` / `awarded` 三者必须自洽；不服就报错（R14/R15），不许静默改数过关。典型陷阱：判"不符合"却把 `fail_items` 写成 0 → 一分不扣；判"不符合"却填了 `awarded` → 照拿满分。这两条都不报错不告警，只有全量跑才发现分数不对。
+9. **各线条款总数要平账。** 符号台账（R9）和分值闭合（R13）只管得着"带符号"和"计分"的条款——符合性线里那些不计分的要求，**整条漏拆机器也发现不了**。所以拆条时必须人工从原文数出三线总数写进 `line_totals`，由 R17 核对。这是唯一能防"拆漏一整条线"的手段。
 
 ## 五步流程
 
@@ -51,6 +53,7 @@ python scripts/evaluate.py --requirements work/requirements.json \
                            --assessments work/assessments.json \
                            --profile work/company_profile.json --out ./work
 python scripts/validate.py --work ./work --profile work/company_profile.json
+python scripts/pentest.py  --work ./work --profile work/company_profile.json   # 改了脚本必跑
 ```
 
 ## 三条评估线
@@ -75,7 +78,10 @@ python scripts/validate.py --work ./work --profile work/company_profile.json
 - **报价分一律不适用**，报告里写明"需开标后按基准价计算，本评估不预测"。
 - **硬门槛自动推导结论**：任一硬门槛 `FAIL` 出结论"出局"；无一 FAIL 但有 `UNKNOWN` 出"待定"；全部 PASS 出"通过"。由 R4 双向校验。
 - **覆盖台账** `coverage_ledger`：源里每个符号行号都要登记 `COVERED` 或 `EXEMPT` 加理由。台账键是 **(符号, 行号)**，不是行号——同一行可能同时出现 ★▲█●。
-- **分值池** `score_model.pools`：原文明确"每有一项 X 不满足扣 N 分（共 M 条）"才建池；无符号条款也要建池。R5 校验条数与乘法闭合，R6 禁止无依据扣分，R13 校验总分闭合。
+- **分值池** `score_model.pools`：原文明确"每有一项 X 不满足扣 N 分（共 M 条）"才建池；无符号条款也要建池。R5 校验条数与乘法闭合，R6 禁止无依据扣分，R13 校验总分闭合（**pools 为空也要平账**）。
+- **判定值优先于手填分值**：`evaluate.py` 按 `status` 反推扣分项数与得分，再把不一致处写进报告第四节"算分口径被自动纠正的地方"，由 R14/R15 拦截。
+- **★ 一定标硬门槛**（R16）。漏标会让"出局"静默降级成"待定/通过"，且不报任何错——这是本 skill 被实测打穿过的最危险一处。
+- **红队自检** `pentest.py`：主动构造坏数据，验证"有人把关掉校验后能不能悄悄过关"。这不是测"算得对不对"，是测"能不能被绕过"。
 
 符号建模与"以 PDF 为准"陷阱见 @references/severity-symbols.md。
 公司资料填报与零幻觉边界见 @references/profile-guide.md。
@@ -95,15 +101,16 @@ references/case-study.md              真实项目实测：90 条判定、48+42 
 scripts/extract_tender.py             docx/pdf 转带行号底稿加指纹加符号台账（零依赖）
 scripts/init_work.py                  从模板生成 work/ 骨架（三份 json + 说明）
 scripts/evaluate.py                   要求加判定转判定表、区间、结论、报告 md
-scripts/validate.py                   R1-R13 门禁校验
+scripts/validate.py                   R1-R17 门禁校验
 scripts/self_test.py                  自检：1 金样例加 5 个应被拦截的变异
+scripts/pentest.py                    红队自检：10 个「坏数据」用例，验证能不能被绕过
 assets/requirements.template.json     要求清单模板（含字段取值说明）
 assets/assessments.template.json      逐条判定模板
 assets/company_profile.template.json  公司事实库模板
 assets/公司资料采集表.md               发给被评公司填的白话表单
 ```
 
-改动脚本后跑 `python scripts/self_test.py`，必须 6 项全绿。
+改动脚本后两个都要跑，必须全绿：`self_test.py`（6 项，测算得对不对）+ `pentest.py`（10 项，测能不能被绕过）。
 
 ## 交付
 

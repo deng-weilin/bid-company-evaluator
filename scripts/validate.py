@@ -29,6 +29,14 @@ def num(v):
         return None
 
 
+def as_i(v, default=0):
+    """把 fail_items / unknown_items 之类转成 int，非法值按 default。"""
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
 class Report:
     def __init__(self):
         self.rows = []
@@ -142,14 +150,89 @@ def main():
 
     # R13 总分闭合：扣分池合计 + 加分项满分合计 必须等于详细评审总分
     # 对不上就说明「有分数没被拆成要求」或「池抄错了」，两者都是交付级错误。
+    # 注意：pools 为空（纯加分制的招标）时也要平账 —— 早期版本在这里直接跳过，
+    # 导致「一份只拆了加分项、扣分条款全漏」的清单照样过校验。
     pools_sum = sum(num(p.get("declared_total")) or 0.0 for p in model.get("pools", []))
     add_sum = sum(num(r.get("max_score")) or 0.0
                   for r in reqs if r.get("line") == "SCORING" and num(r.get("max_score")) is not None)
-    if tot is not None and model.get("pools"):
+    if tot is not None:
         gap = tot - (pools_sum + add_sum)
         if abs(gap) > 0.011:
             rep.error("R13", "详细评审总分对不上：扣分池 %.2f + 加分项 %.2f = %.2f，但声明总分 %.2f（差 %.2f 分）"
                       % (pools_sum, add_sum, pools_sum + add_sum, tot, gap))
+
+    # ---------- R14–R16：針對「判定值与分数不一致」的红队补丁 ----------
+    # 背景写在 scripts/pentest.py：以下四组组合在原版本里全部静默通过。
+    req_by_id = {r["id"]: r for r in reqs}
+
+    # R14 判定值与计数/得分必须自洽（不许「判不符合却不扣分」「判不符合却得分」）
+    for rid, it in items.items():
+        r = req_by_id.get(rid, {})
+        st = it.get("status")
+        per = num(r.get("per_item"))
+        mx = num(r.get("max_score"))
+        aw = num(it.get("awarded"))
+        fi = it.get("fail_items")
+        ui = it.get("unknown_items")
+        if st == "FAIL":
+            if per is not None and r.get("line") == "SCORING" and fi is not None \
+               and as_i(fi) < 1:
+                rep.error("R14", "%s 判定为「不符合」但 fail_items=%s —— 会算出 0 扣分（必须 ≥1）"
+                          % (rid, fi))
+            if ui is not None and as_i(ui) > 0:
+                rep.error("R14", "%s 判定为「不符合」（结论已确定）却填了 unknown_items=%s —— "
+                                 "确定的结论不该再计资料不足项，否则最差口径被虚增扣分" % (rid, ui))
+            if mx is not None and aw is not None and aw > 0.011:
+                rep.error("R14", "%s 判定为「不符合」却填了得分 %s —— 不符合不得分" % (rid, aw))
+        if st == "PASS":
+            if per is not None and fi is not None and as_i(fi) > 0:
+                rep.error("R14", "%s 判定为「符合」却填了 fail_items=%s" % (rid, fi))
+            if mx is not None and aw is None:
+                rep.error("R14", "%s 判定为「符合」且该项目有满分 %.2f，但未填 awarded（会记 0 分）"
+                          % (rid, mx))
+        if st == "NA":
+            if (fi is not None and as_i(fi) > 0) or (ui is not None and as_i(ui) > 0):
+                rep.error("R14", "%s 判定为「不适用」却填了 fail/unknown 项数" % rid)
+            if aw is not None and aw > 0.011:
+                rep.error("R14", "%s 判定为「不适用」却填了得分 %s" % (rid, aw))
+        if (fi is not None and as_i(fi) < 0) or (ui is not None and as_i(ui) < 0):
+            rep.error("R14", "%s 的 fail_items/unknown_items 为负数" % rid)
+
+    # R15 得分不得超过该项满分、不得为负
+    for rid, it in items.items():
+        mx = num(req_by_id.get(rid, {}).get("max_score"))
+        aw = num(it.get("awarded"))
+        if mx is None or aw is None:
+            continue
+        if aw < -0.011:
+            rep.error("R15", "%s 得分 %s 为负数" % (rid, aw))
+        elif aw > mx + 0.011:
+            rep.error("R15", "%s 得分 %s 超过该项满分 %s（超发 %.2f 分）"
+                      % (rid, aw, mx, aw - mx))
+
+    # R16 ★ 必须标硬门槛。漏标会让「出局」静默降级成「待定/通过」而不报任何错。
+    for r in reqs:
+        if r.get("severity_symbol") == "★" and not r.get("is_hard_gate"):
+            rep.error("R16", "%s 带 ★ 符号但未标 is_hard_gate=true —— 它不满足时不会触发出局，结论会被静默降级"
+                      % r["id"])
+        # 反向：标了硬门槛却不在资质/符合性线，通常意味着线的归属填错了
+        if r.get("is_hard_gate") and r.get("line") == "SCORING":
+            rep.warn("R16", "%s 标了硬门槛却在标准线 —— 标准线一般是扣分不是出局，请确认"
+                     % r["id"])
+
+    # R17 各线条款总数平账（防止「整条线漏拆」：符号台账与分值闭合都管不到不计分的条款）
+    declared_totals = rq.get("line_totals") or {}
+    for ln in ("QUALIFICATION", "CONFORMITY", "SCORING"):
+        d = declared_totals.get(ln)
+        if d is None:
+            continue
+        actual_n = sum(1 for r in reqs if r.get("line") == ln)
+        if actual_n != d:
+            rep.error("R17", "%s 原文应有 %d 条，实际登记 %d 条（差 %d）—— 漏拆或拆重"
+                      % (ln, d, actual_n, abs(d - actual_n)))
+    if not declared_totals:
+        rep.warn("R17", "未在 requirements.json 声明 line_totals（各线原文条款总数），"
+                        "整条线漏拆将无机器校验 —— 请在拆条时人工数出并补上")
 
     # R8 / R11 / R12 证据链
     prof = load(a.profile) if (a.profile and os.path.exists(a.profile)) else None
